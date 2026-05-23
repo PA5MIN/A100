@@ -44,7 +44,13 @@ download_asset() {
   fi
 
   echo "Download: $name"
-  if [[ -n "${GH_TOKEN:-}" ]]; then
+  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    gh release download "$TAG" \
+      --repo "$REPO" \
+      --pattern "$name" \
+      --dir "$RESTORE_DIR" \
+      --clobber
+  elif [[ -n "${GH_TOKEN:-}" ]]; then
     curl -L --fail --retry 5 --retry-delay 3 \
       -H "Authorization: Bearer ${GH_TOKEN}" \
       -o "$RESTORE_DIR/$name" "$url"
