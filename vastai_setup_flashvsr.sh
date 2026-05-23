@@ -113,7 +113,10 @@ cat "$RESTORE_DIR"/${ASSET_PREFIX}* | zstd -d -c | tar -xf -
 
 cat > "$WORKSPACE_DIR/flashvsr_env.sh" <<'EOF'
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
+
+# Conda activation scripts from CUDA packages may reference unset variables.
+set +u
 
 source /workspace/miniconda/etc/profile.d/conda.sh
 conda activate /workspace/envs/flashvsr-fast
