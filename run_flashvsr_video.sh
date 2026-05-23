@@ -262,7 +262,7 @@ make_chunk_meta_and_inputs() {
     chunk="$(printf 'chunk_%03d' "$idx")"
 
     echo "Create $chunk: input frames [$in_start,$in_end), keep $keep_frames, trim_left $trim_left"
-    ffmpeg -y -hide_banner -i "$preprocessed" \
+    ffmpeg -y -nostdin -hide_banner -i "$preprocessed" \
       -vf "trim=start_frame=${in_start}:end_frame=${in_end},setpts=PTS-STARTPTS,setsar=1" \
       -an -c:v libx264 -crf "$PRE_CRF" -preset slow -pix_fmt yuv420p \
       "$chunks_dir/${chunk}.mp4"
@@ -309,7 +309,7 @@ run_one_video() {
   describe_preprocess "$src"
   preprocess_filter="$(build_preprocess_filter "$src")"
   echo "Filter: $preprocess_filter"
-  ffmpeg -y -hide_banner \
+  ffmpeg -y -nostdin -hide_banner \
     ${FFMPEG_INPUT_OPTS:+$FFMPEG_INPUT_OPTS} \
     -i "$src" \
     -vf "$preprocess_filter" \
@@ -347,7 +347,7 @@ run_one_video() {
     fi
 
     echo "Trim $chunk: frames [$trim_left,$trim_end), crop 3840x2160"
-    ffmpeg -y -hide_banner -i "$raw" \
+    ffmpeg -y -nostdin -hide_banner -i "$raw" \
       -vf "trim=start_frame=${trim_left}:end_frame=${trim_end},setpts=PTS-STARTPTS,crop=3840:2160:0:${FINAL_CROP_Y},setsar=1" \
       -an -c:v libx264 -crf "$POST_CRF" -preset slow -pix_fmt yuv420p \
       "$job_dir/cropped/${chunk}_3840x2160.mp4"
@@ -360,11 +360,11 @@ run_one_video() {
     printf "file '%s'\n" "$f" >> "$list"
   done
 
-  ffmpeg -y -hide_banner -f concat -safe 0 -i "$list" -c copy "$out_noaudio"
+  ffmpeg -y -nostdin -hide_banner -f concat -safe 0 -i "$list" -c copy "$out_noaudio"
 
   echo
   echo "== Merge original audio =="
-  ffmpeg -y -hide_banner \
+  ffmpeg -y -nostdin -hide_banner \
     -i "$out_noaudio" \
     -i "$src" \
     -map 0:v:0 -map 1:a? \

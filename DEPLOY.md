@@ -13,6 +13,10 @@ Disk: 100G minimum, 150G recommended
 Image: vastai/base-image_cuda-12.8.1-auto/jupyter
 ```
 
+Do not use a 32G root disk for the normal restore path. The split backup is
+about 18G compressed, and the restored environment needs tens of GB more.
+`vastai_setup_flashvsr.sh` checks for at least 80G free before it starts.
+
 Check the machine:
 
 ```bash
@@ -110,4 +114,14 @@ scale -> 960x540
 pad -> 960x544
 FlashVSR -> 3840x2176
 crop -> 3840x2160
+```
+
+The runner uses overlapped chunks and `ffmpeg -nostdin` so ffmpeg does not
+consume the chunk list from the shell loop. This avoids the old failure mode
+where only `chunk_000` was processed and the final video was only about 4s.
+
+For detailed fixes and known issues, see:
+
+```text
+TROUBLESHOOTING.md
 ```

@@ -58,6 +58,10 @@ bash /workspace/A100/vastai_setup_flashvsr.sh
 That downloads the release assets, verifies checksums, installs Miniconda, and
 restores everything to `/workspace`.
 
+Use at least a 100G disk. A 32G root disk is not enough for the 18G split
+backup plus the restored runtime. The setup script checks for at least 80G
+free before downloading and restoring.
+
 ## Run A Video
 
 Put videos here:
@@ -118,6 +122,10 @@ For landscape inputs, it skips the rotation. If the aspect ratio matches
 The runner uses overlapped chunks by default, so the previous 14s/22s segment
 jump should not reappear.
 
+The runner also passes `-nostdin` to ffmpeg. Without that, ffmpeg can consume
+the chunk metadata from the shell loop, causing only `chunk_000` to run and the
+final video to be only a few seconds long.
+
 If a future input needs custom handling, override preprocessing:
 
 ```bash
@@ -149,3 +157,8 @@ If a chunk still reports not enough frames, increase overlap:
 ```bash
 OVERLAP_FRAMES=24 bash /workspace/A100/run_flashvsr_video.sh
 ```
+
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for the real issues found during
+the first VastAI restore and run: private Release 404s, 32G disk failures,
+broken merged tar files, conda activation, source video corruption, and AAC
+audio warnings.

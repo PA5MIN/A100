@@ -11,6 +11,8 @@ WORKSPACE_DIR="${WORKSPACE_DIR:-/workspace}"
 RESTORE_DIR="${RESTORE_DIR:-/dev/shm/restore_flashvsr_a100}"
 MINICONDA_DIR="${MINICONDA_DIR:-$WORKSPACE_DIR/miniconda}"
 ENV_DIR="${ENV_DIR:-$WORKSPACE_DIR/envs/flashvsr-fast}"
+MIN_WORKSPACE_FREE_GB="${MIN_WORKSPACE_FREE_GB:-80}"
+SKIP_DISK_CHECK="${SKIP_DISK_CHECK:-0}"
 
 ASSET_PREFIX="${ASSET_PREFIX:-flashvsr_a100_cu128_sm80.tar.zst.part-}"
 ASSET_SUFFIXES="${ASSET_SUFFIXES:-aa ab ac ad ae af ag ah ai aj ak}"
@@ -71,6 +73,20 @@ run_root apt-get install -y \
   ca-certificates curl wget git git-lfs gh zstd ffmpeg bzip2
 
 mkdir -p "$WORKSPACE_DIR" "$RESTORE_DIR"
+
+echo
+echo "== Workspace disk check =="
+df -h "$WORKSPACE_DIR" || true
+if [[ "$SKIP_DISK_CHECK" != "1" ]]; then
+  avail_kb="$(df -Pk "$WORKSPACE_DIR" | awk 'NR==2 {print $4}')"
+  required_kb=$(( MIN_WORKSPACE_FREE_GB * 1024 * 1024 ))
+  if (( avail_kb < required_kb )); then
+    echo "Not enough free space in $WORKSPACE_DIR." >&2
+    echo "Need at least ${MIN_WORKSPACE_FREE_GB}G free for the normal restore path." >&2
+    echo "Open a new VastAI instance with 100G+ disk, or rerun with SKIP_DISK_CHECK=1 only if you know what you are doing." >&2
+    exit 1
+  fi
+fi
 
 echo
 echo "== GPU check =="

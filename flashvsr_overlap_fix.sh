@@ -65,7 +65,7 @@ while (( core_start < target_frames )); do
   chunk="$(printf 'chunk_%03d' "$idx")"
 
   echo "Make $chunk: input frames [$in_start,$in_end), keep $keep_frames after trim_left=$trim_left"
-  ffmpeg -y -hide_banner -i "$INPUT" \
+  ffmpeg -y -nostdin -hide_banner -i "$INPUT" \
     -vf "trim=start_frame=${in_start}:end_frame=${in_end},setpts=PTS-STARTPTS,setsar=1" \
     -an -c:v libx264 -crf "$PRE_CRF" -preset slow -pix_fmt yuv420p \
     "$WORK/chunks/${chunk}.mp4"
@@ -109,7 +109,7 @@ while IFS=$'\t' read -r chunk trim_left keep_frames; do
 
   trim_end=$(( trim_left + keep_frames ))
   echo "Trim $chunk: frames [$trim_left,$trim_end)"
-  ffmpeg -y -hide_banner -i "$raw" \
+  ffmpeg -y -nostdin -hide_banner -i "$raw" \
     -vf "trim=start_frame=${trim_left}:end_frame=${trim_end},setpts=PTS-STARTPTS,crop=3840:2160:0:8,setsar=1" \
     -an -c:v libx264 -crf "$POST_CRF" -preset slow -pix_fmt yuv420p \
     "$WORK/cropped/${chunk}_3840x2160.mp4"
@@ -121,11 +121,11 @@ for f in "$WORK"/cropped/chunk_*_3840x2160.mp4; do
   printf "file '%s'\n" "$f" >> "$list"
 done
 
-ffmpeg -y -hide_banner -f concat -safe 0 -i "$list" -c copy \
+ffmpeg -y -nostdin -hide_banner -f concat -safe 0 -i "$list" -c copy \
   "$WORK/final/final_3840x2160_noaudio_overlap_fixed.mp4"
 
 if [[ -f "$AUDIO_SOURCE" ]]; then
-  ffmpeg -y -hide_banner \
+  ffmpeg -y -nostdin -hide_banner \
     -i "$WORK/final/final_3840x2160_noaudio_overlap_fixed.mp4" \
     -i "$AUDIO_SOURCE" \
     -map 0:v:0 -map 1:a? \
