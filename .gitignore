@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.env.*
+*.session
+*.session-journal
+*.local.json
+GH_TOKEN
+.hf-cache/
+.uv-cache/
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.tar.zst
+*.tar.zst.part-*

@@ -1,17 +1,114 @@
-# VastAI FlashVSR A100 Runner
+# A100 FlashVSR
 
-This repo keeps the A100 FlashVSR restore and run commands as scripts, so a
-new VastAI machine only needs one setup command and one daily run command.
+**One restore command. One run command. 4K video from a Vast.ai A100/A800.**
 
-## What Was Backed Up
+This repository packages a known-good [FlashVSR](https://github.com/OpenImagingLab/FlashVSR) runtime for NVIDIA **A100 / A800 (sm80)** plus the shell scripts that actually process long videos: overlapped chunks, original frame timing, and a 3840×2160 output.
 
-GitHub Release:
+中文：在 Vast.ai 上租一台 A100/A800，一条命令还原已经编好的 FlashVSR 环境，再一条命令把视频超到 4K。默认保持片源帧率，竖屏会先转横再处理，长视频按重叠分块避免接缝跳变。
 
-```text
-https://github.com/PA5MIN/A100/releases/tag/a100-cu128-cudnn919-sm80-20260523
+[![CUDA](https://img.shields.io/badge/CUDA-12.8-76B900?logo=nvidia&logoColor=white)](#hardware)
+[![GPU](https://img.shields.io/badge/GPU-A100%20%2F%20A800%20sm80-76B900?logo=nvidia&logoColor=white)](#hardware)
+[![FlashVSR](https://img.shields.io/badge/FlashVSR-v1.1%20Tiny%20Long-0ea5e9)](https://github.com/OpenImagingLab/FlashVSR)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+---
+
+## Why this exists
+
+FlashVSR on a cloud GPU usually fails for boring reasons: disk too small, cuDNN too old, Block-Sparse-Attention rebuilt for the wrong architecture, ffmpeg eating the chunk list from stdin, seams between 8-second segments.
+
+This repo is the path that already worked:
+
+1. Restore a **prebuilt** conda env + FlashVSR + Block-Sparse-Attention from [GitHub Releases](https://github.com/PA5MIN/A100/releases/tag/a100-cu128-cudnn919-sm80-20260523) (no compile on a fresh box).
+2. Run `run_flashvsr_video.sh` on one file or a folder.
+
+## Hardware
+
+| Item | Requirement |
+|---|---|
+| GPU | A100 80GB or A800 80GB (**sm80**). Other architectures need a fresh Block-Sparse-Attention build. |
+| CUDA | Driver reporting ≥ 12.8. Runtime in the backup is **torch 2.11.0+cu128**, **cuDNN 91900**. |
+| Disk | **100 GB minimum**, 150 GB better. A 32 GB root disk is not enough. |
+| Image | Vast.ai CUDA 12.8 base / Jupyter image is fine. |
+
+## Quick start
+
+On a new Vast.ai instance:
+
+```bash
+cd /workspace
+apt-get update
+apt-get install -y git
+git clone https://github.com/PA5MIN/A100.git
+bash /workspace/A100/vastai_setup_flashvsr.sh
 ```
 
-The release contains:
+Put videos in `/workspace/flashvsr_jobs/input`, then:
+
+```bash
+bash /workspace/A100/run_flashvsr_video.sh
+```
+
+Or pass a path:
+
+```bash
+bash /workspace/A100/run_flashvsr_video.sh /workspace/my_video.mp4
+```
+
+Outputs land in `/workspace/flashvsr_jobs/output` as `*_3840x2160_flashvsr.mp4`.
+
+Step-by-step notes: [DEPLOY.md](DEPLOY.md). Real failure modes from the first restore: [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+## What the runner does
+
+Default: **keep source frame timing** (no `fps=` filter). Portrait is rotated to landscape first.
+
+```text
+portrait 1088×1920
+  → rotate 1920×1088
+  → scale 960×544
+  → FlashVSR ×4  → 3840×2176
+  → crop 8 px top/bottom → 3840×2160
+  → mux original audio
+```
+
+```text
+portrait 1080×1920
+  → rotate 1920×1080
+  → scale 960×540
+  → pad 2 px → 960×544
+  → FlashVSR ×4 → 3840×2176
+  → crop → 3840×2160
+  → mux original audio
+```
+
+Landscape skips rotation. Matching `960×544` scales directly; `16:9` scales to `960×540` then pads; anything else is center-cropped to fit.
+
+Chunks overlap so FlashVSR’s `8n−3` tail loss does not show up as a jump. Every ffmpeg call uses `-nostdin` so it cannot steal the chunk list from the shell loop.
+
+## Useful overrides
+
+```bash
+# Force 30 fps (off by default)
+FPS=30 bash /workspace/A100/run_flashvsr_video.sh /workspace/video.mp4
+
+# Custom preprocess
+PREPROCESS_FILTER='transpose=1,scale=960:544:flags=area,setsar=1' \
+  bash /workspace/A100/run_flashvsr_video.sh /workspace/video.mp4
+
+# Opposite portrait rotation
+PORTRAIT_ROTATE_FILTER=transpose=2 bash /workspace/A100/run_flashvsr_video.sh /workspace/video.mp4
+
+# Honor container rotation metadata
+FFMPEG_INPUT_OPTS='' bash /workspace/A100/run_flashvsr_video.sh /workspace/video.mp4
+
+# More overlap if a chunk is short on frames
+OVERLAP_FRAMES=24 bash /workspace/A100/run_flashvsr_video.sh
+```
+
+## What’s in the release
+
+Tag [`a100-cu128-cudnn919-sm80-20260523`](https://github.com/PA5MIN/A100/releases/tag/a100-cu128-cudnn919-sm80-20260523) restores:
 
 ```text
 /workspace/envs/flashvsr-fast
@@ -20,145 +117,23 @@ The release contains:
 /workspace/flashvsr_backup_meta
 ```
 
-It is built for:
+About 18 GB compressed split archives, SHA-256 checked before extract. `vastai_setup_flashvsr.sh` refuses to start unless `/workspace` has at least 80 GB free.
 
-```text
-A100/A800 sm80
-torch 2.11.0+cu128
-CUDA 12.8
-cuDNN 91900
-```
+## Scripts
 
-Use it on A100/A800-class machines. Different GPU architectures may need a
-fresh Block-Sparse-Attention build.
+| File | Role |
+|---|---|
+| `vastai_setup_flashvsr.sh` | Download release, verify checksums, install Miniconda, restore env |
+| `run_flashvsr_video.sh` | Daily path: preprocess → overlapped FlashVSR → concat → audio |
+| `flashvsr_overlap_fix.sh` | Standalone overlap-trim helper from the first seam-debug session |
 
-## New VastAI Machine
+## Credits
 
-Clone this repo on the VastAI machine:
+- [FlashVSR](https://github.com/OpenImagingLab/FlashVSR) — OpenImagingLab
+- [FlashVSR-v1.1 weights](https://huggingface.co/JunhaoZhuang/FlashVSR-v1.1)
 
-```bash
-cd /workspace
-apt-get update
-apt-get install -y git
-git clone https://github.com/PA5MIN/A100.git
-```
+This repo only ships restore/run glue and a prebuilt sm80 runtime. Model licenses follow upstream.
 
-If the repo or release is private, log in first or export a GitHub token:
+## License
 
-```bash
-export GH_TOKEN="paste_token_here"
-```
-
-Restore the prebuilt environment:
-
-```bash
-bash /workspace/A100/vastai_setup_flashvsr.sh
-```
-
-That downloads the release assets, verifies checksums, installs Miniconda, and
-restores everything to `/workspace`.
-
-Use at least a 100G disk. A 32G root disk is not enough for the 18G split
-backup plus the restored runtime. The setup script checks for at least 80G
-free before downloading and restoring.
-
-## Run A Video
-
-Put videos here:
-
-```text
-/workspace/flashvsr_jobs/input
-```
-
-Then run:
-
-```bash
-bash /workspace/A100/run_flashvsr_video.sh
-```
-
-Outputs go here:
-
-```text
-/workspace/flashvsr_jobs/output
-```
-
-You can also pass a video path directly:
-
-```bash
-bash /workspace/A100/run_flashvsr_video.sh /workspace/my_video.mp4
-```
-
-## Default Processing
-
-The runner auto-detects the source shape and does not add an `fps=` filter by
-default, so a `21.85fps` source stays at its original frame timing. For a
-`1088x1920` portrait video, the clean path is:
-
-```text
-1088x1920 portrait video
--> rotate to 1920x1088 landscape
--> scale down to 960x544
--> FlashVSR x4 to 3840x2176
--> crop 8 px top + 8 px bottom to 3840x2160
--> merge original audio
-```
-
-For a `1080x1920` portrait video, the path is:
-
-```text
-1080x1920 portrait video
--> rotate to 1920x1080 landscape
--> scale down to 960x540
--> pad 2 px top + 2 px bottom to 960x544
--> FlashVSR x4 to 3840x2176
--> crop 8 px top + 8 px bottom to 3840x2160
--> merge original audio
-```
-
-For landscape inputs, it skips the rotation. If the aspect ratio matches
-`960x544`, it scales directly to `960x544`; if it matches `16:9`, it scales to
-`960x540` and pads to `960x544`; otherwise it center-crops to fit.
-
-The runner uses overlapped chunks by default, so the previous 14s/22s segment
-jump should not reappear.
-
-The runner also passes `-nostdin` to ffmpeg. Without that, ffmpeg can consume
-the chunk metadata from the shell loop, causing only `chunk_000` to run and the
-final video to be only a few seconds long.
-
-If a future input needs custom handling, override preprocessing:
-
-```bash
-PREPROCESS_FILTER='transpose=1,scale=960:544:flags=area,setsar=1' \
-bash /workspace/A100/run_flashvsr_video.sh /workspace/video.mp4
-```
-
-Only use this if you deliberately want a standard 30fps output:
-
-```bash
-FPS=30 bash /workspace/A100/run_flashvsr_video.sh /workspace/video.mp4
-```
-
-The script uses `-noautorotate` by default so encoded dimensions are handled
-deterministically. To let ffmpeg honor rotation metadata, run:
-
-```bash
-FFMPEG_INPUT_OPTS='' bash /workspace/A100/run_flashvsr_video.sh /workspace/video.mp4
-```
-
-If the portrait video rotates the wrong way, use the opposite transpose:
-
-```bash
-PORTRAIT_ROTATE_FILTER=transpose=2 bash /workspace/A100/run_flashvsr_video.sh /workspace/video.mp4
-```
-
-If a chunk still reports not enough frames, increase overlap:
-
-```bash
-OVERLAP_FRAMES=24 bash /workspace/A100/run_flashvsr_video.sh
-```
-
-See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for the real issues found during
-the first VastAI restore and run: private Release 404s, 32G disk failures,
-broken merged tar files, conda activation, source video corruption, and AAC
-audio warnings.
+Scripts and docs in this repository are [MIT](LICENSE). Third-party code and weights inside the release keep their original licenses.
